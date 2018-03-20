@@ -1,55 +1,49 @@
 ;;;=======================================================================
-;;;		Ranas.lisp
-;;;			Resuelve el problema de las ranas utilizando búsqueda ciega,
+;;;		Glol.lisp
+;;;			Resuelve el problema de GLOL utilizando búsqueda ciega,
 ;;;			a lo profundo y a lo ancho.
 ;;;
 ;;;		Descripción del problema:
-;;;			Ambos grupos de ranas desean cruzar el estanque hacia
-;;;			el lado opuesto, pero sólo hay una hilera de rocas…
-;;;
-;;;			Una rana puede saltar una o dos posiciones (adelante o
-;;;			atrás) hacia otra roca, siempre y cuando la roca destino
-;;;			se encuentre vacía.
+;;;			Un granjero desea cruzar el río, acompañado de su lobo,
+;;;			su oveja y una caja de Legumbres.
+;;;			En su lancha sólo cabe uno de esos elementos, además de él como
+;;;			remero.
+;;;			No deben estar solos, en ninguna orilla, el lobo con la
+;;;			oveja, ni la oveja con las legumbres.
 ;;;		
 ;;;		Representación de los estados:
-;;;			Lista representando la hilera de rocas con los siguientes 
-;;;			valores:
-;;;				0 -> roca vacía
-;;;				1 -> rana tipo 1
-;;;				2 -> rana tipo 2
+;;;			Lista con dos sublistas internas una por cada orilla
+;;;			En cada orilla, un T o Nil si hay Lobo (L),Oveja (O), 
+;;;			Legumbre (Le) y Granjero (G)
 ;;;			
-;;;			un valor numerico representando la posicion la roca vacía
-;;;			
-;;;			( (1 1 1 0 2 2 2) 3)
+;;;			  L Le O G    L Le O G
+;;;			(( 1 1 1 1 ) ( 0 0 0 0 ))
 ;;;
 ;;;		Representación de los operadores:
 ;;;			Lista que contiene sublistas con el siguiente formato:
-;;;				( :dos-izq -2 )
-;;;
-;;;			donde: 
-;;;				dos-izq es una etiqueta como identificador
-;;;				y el -2 es un valor positivo o negativo que indica la 
-;;;				cantidad de saltos y la dirección
+;;;							L Le O
+;;;			(:oveja ( 0 0 1 ))
 ;;;
 ;;;		Estado Inicial:
-;;;			( (1 1 1 0 2 2 2) 3)
+;;;			(( 1 1 1 1 ) ( 0 0 0 0 ))
 ;;;
 ;;;		Estado Meta:
-;;;			( (2 2 2 0 1 1 1) 3)
+;;;			(( 0 0 0 0) ( 1 1 1 1 ))
 ;;;
 ;;;		Héctor Moreno
 ;;;		18/Marzo/08
 ;;;=======================================================================
 (defparameter *open* '()) 					; Frontera de busqueda
 (defparameter *memory* '())					; Memoria de intentos previos
-(defparameter *operators* '((:dos-der -2) 	; Operadores
-							(:uno-der -1)
-							(:uno-izq 1)
-							(:dos-izq 2)) )
+(defparameter *operators* '((:lobo (1 0 0)) 	; Operadores
+							(:legumbre (0 1 0))
+							(:oveja (0 0 1))
+							(:nada (0 0 0))) )
 (defparameter *id* -1)						; Identificador del ultimo nodo creado
 (defparameter *current-ancestor* nil)		; Id del ancestro 
 (defparameter *solution* nil)				; Lista donde se genera la solución
-
+(defparameter *invalid-states* '( (1 0 1 0) 
+								  (0 1 1 0) ))
 ;;=======================================================================
 ;;  CREATE-NODE [estado  op]  
 ;;      estado - Un estado del problema a resolver (sistema)...
@@ -80,27 +74,64 @@
 	(pop *open*))
 
 ;;=======================================================================
-;;  VALID-OPERATOR [op, estado]
-;;        Predicado.  Indica si es posible aplicar el operador [op] a [estado] segun los recursos
+;;  BARGE-SHORE [state]
+;;        Regresa la orilla del rio en la que se encuentra la barca en  [state]
+;;           0 - Orilla origen (primer sublista del estado)
+;;           1 - Orilla destino (segunda sublista del estado)
 ;;=======================================================================
+(defun  barge-shore (state)
+"Regresa la orilla del río en la que se encuentra la barca en el estado recibido como parámetro:  0 - origen  1 - destino"
+     (if  (= 1 (fourth (first  state)))  0  1))
 
-(defun valid-operator (op state) 
+;;=======================================================================
+;;  VALID-OPERATOR [op, state]
+;;        Predicado.  Indica si es posible aplicar el operador [op] a [state] segun los recursos
+;;=======================================================================
+(defun valid-operator (op state)
 	"Predicado. Valida la aplicación de un operador a un estado..."
-	(let ( (next-pos (+ (second state) (second op))) ) 
-		 (and (>= next-pos 0) (< next-pos (length (first state) )) ) ))
+	(let ((shore (nth (barge-shore state) state))) 
+		(loop for rm-animal in (second op)
+				for animal in shore
+				when (> 0 (- animal rm-animal ))
+					do (return Nil)
+				finally (return T) ) ))
+
+;;=======================================================================
+;;  VALID-STATE [state]
+;;        Predicado.  Indica si [state]  es valido segun las restricciones del problema
+;;=======================================================================
+(defun  valid-state? (state)
+"Predicado. Valida  un estado según las restricciones generales del problema...
+       el estado tiene estructura:  [(<l0><le0><o0><g0>) (<l1><le1><o1><g1>)]"
+    (loop for shore in state
+    	with is-invalid = Nil
+    	when is-invalid
+    		do (return Nil)
+  	 	do (loop for invalid-shore in *invalid-states*
+  	 		when is-invalid
+  	 			do (return Nil)
+  	 		do (setf is-invalid T)
+  	 			(loop for animal1 in invalid-shore
+  	 				 for animal2 in shore
+  	 			do (setf is-invalid (and (= animal1 animal2) is-invalid) ))) 
+  	 	finally (return (not is-invalid))))
 
 ;;=======================================================================
 ;;  APPLY-OPERATOR [op, state]
 ;;        Solución simbólica del problema
 ;;=======================================================================
+(defun flip (bit)  (boole  BOOLE-XOR  bit  1))
+
 (defun apply-operator (op state) 
 	"Obtiene el descendiente de [state] al aplicarle  [op]  SIN VALIDACIONES"
-	(loop for frog in (first state)
-		with next-pos = (+ (second state) (second op))
-		collect frog into new-state
-		finally (setf (nth (second state) new-state) (nth next-pos new-state))
- 				(setf (nth next-pos new-state) 0)
- 				(return (list new-state next-pos)) ))
+	(loop for shore in state 
+		collect (loop for animal in shore
+					  for animal2 in (second op)
+					  	if (= (fourth shore) 1)
+							collect (- animal animal2) into new-shore
+						else
+							collect (+ animal animal2) into new-shore
+						finally (return (append new-shore (list (flip (fourth shore))) )) ) ))
 
 ;;=======================================================================
 ;;  EXPAND [ state]
@@ -109,8 +140,10 @@
 (defun expand (state) 
 	"Obtiene todos los descendientes válidos de un estado, aplicando todos los operadores en *operators* en ese mismo órden"
 	(loop for op in *operators* 
-		when (valid-operator op state)
-		collect (list (apply-operator op state) op) into childs
+		with new-state = nil
+		do (setf new-state (apply-operator op state))
+		when (and (valid-operator op state) (valid-state? new-state))
+			collect (list new-state op) into childs
 		finally (return childs)))
 
 ;;=======================================================================
@@ -164,6 +197,7 @@
 		else
 			do (format t "\(~2A\)  aplicando ~20A se llega a ~A~%"  i (fourth  node)  (second  node)) ))
 
+
 ;;=======================================================================
 ;;  RESET-ALL  y  BLIND-SEARCH
 ;;
@@ -209,3 +243,6 @@
 
 ;;=======================================================================
 ;;=======================================================================
+
+
+
