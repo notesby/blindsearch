@@ -37,6 +37,10 @@
 ;;;		Estado Meta:
 ;;;			( (2 2 2 0 1 1 1) 3)
 ;;;
+;;;		Ejemplo:
+;;;			(blind-search '( (1 1 1 0 2 2 2) 3) '( (2 2 2 0 1 1 1) 3) :breath-first)
+;;;
+;;;
 ;;;		Héctor Moreno
 ;;;		18/Marzo/08
 ;;;=======================================================================
@@ -50,6 +54,9 @@
 (defparameter *current-ancestor* nil)		; Id del ancestro 
 (defparameter *solution* nil)				; Lista donde se genera la solución
 
+(defparameter *expanded-nodes* 0)
+(defparameter *max-length-open* 0)
+(defparameter *start-time* nil)
 ;;=======================================================================
 ;;  CREATE-NODE [estado  op]  
 ;;      estado - Un estado del problema a resolver (sistema)...
@@ -73,7 +80,9 @@
 	(let ((node (create-node state op))) 
 		( cond ((eql method :depth-first) (push node *open* ))
 				((eql method :breath-first)  (setf *open* (append *open* (list node))))
-				(T nil) ))) 
+				(T nil) ))
+	(when (< *max-length-open* (length *open* ))
+				(setf *max-length-open* (length *open*)))) 
 
 (defun get-from-open ()
 	"Recupera el siguiente elemento a revisar de  frontera de busqueda *open*"
@@ -109,6 +118,7 @@
 (defun expand (state) 
 	"Obtiene todos los descendientes válidos de un estado, aplicando todos los operadores en *operators* en ese mismo órden"
 	(loop for op in *operators* 
+		do (setf *expanded-nodes* (+ *expanded-nodes* 1))
 		when (valid-operator op state)
 		collect (list (apply-operator op state) op) into childs
 		finally (return childs)))
@@ -164,6 +174,14 @@
 		else
 			do (format t "\(~2A\)  aplicando ~20A se llega a ~A~%"  i (fourth  node)  (second  node)) ))
 
+(defun display-stats ()
+	"Despliega las estadisticas de la solución"
+	(format t "Nodos creados: ~A~%" *id* )
+	(format t "Nodos expandidos: ~A~%" *expanded-nodes*)
+	(format t "Longitud máxima de la Frontera de búsqueda: ~A~%" *max-length-open*)
+	(format t "Longitud de la solución: ~A operadores~%" (- (length *solution*) 1))
+	(format t "Tiempo para encontrar la solución: ~D segundos~% " (- (get-internal-real-time) *start-time*)) )
+
 ;;=======================================================================
 ;;  RESET-ALL  y  BLIND-SEARCH
 ;;
@@ -187,6 +205,7 @@
 	    los métodos posibles son: :depth-first - búsqueda en profundidad
 	                              :breath-first - búsqueda en anchura"
     (reset-all)
+    (setf *start-time* (get-internal-real-time))
     (let ( (node nil)
     		(state nil)
     		(childs '())
@@ -201,6 +220,7 @@
 				(cond ((equal goal-state state) 
 						(format t "Éxito. Meta encontrada en ~A intentos~%" (first node))
 						(display-solution (extract-solution node))
+						(display-stats)
 						(setf goal-found T))
 					(T (setf *current-ancestor* (first node))
 						(setf childs (expand state))

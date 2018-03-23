@@ -30,6 +30,9 @@
 ;;;		Estado Meta:
 ;;;			(( 0 0 0 0) ( 1 1 1 1 ))
 ;;;
+;;;		Ejemplo:
+;;;			(blind-search '(( 1 1 1 1 ) ( 0 0 0 0 )) '(( 0 0 0 0) ( 1 1 1 1 )) :breath-first)
+;;;
 ;;;		Héctor Moreno
 ;;;		18/Marzo/08
 ;;;=======================================================================
@@ -44,6 +47,9 @@
 (defparameter *solution* nil)				; Lista donde se genera la solución
 (defparameter *invalid-states* '( (1 0 1 0) 
 								  (0 1 1 0) ))
+(defparameter *expanded-nodes* 0)
+(defparameter *max-length-open* 0)
+(defparameter *start-time* nil)
 ;;=======================================================================
 ;;  CREATE-NODE [estado  op]  
 ;;      estado - Un estado del problema a resolver (sistema)...
@@ -64,10 +70,12 @@
 ;;=======================================================================
 (defun insert-into-open (state op method) 
 	"Permite insertar nodos de la frontera de busqueda *open* de forma apta para buscar a lo profundo y a lo ancho"
-	(let ((node (create-node state op))) 
+	(let ((node (create-node state op)))
 		( cond ((eql method :depth-first) (push node *open* ))
 				((eql method :breath-first)  (setf *open* (append *open* (list node))))
-				(T nil) ))) 
+				(T nil) ))
+		(when (< *max-length-open* (length *open* ))
+				(setf *max-length-open* (length *open*)))) 
 
 (defun get-from-open ()
 	"Recupera el siguiente elemento a revisar de  frontera de busqueda *open*"
@@ -142,6 +150,7 @@
 	(loop for op in *operators* 
 		with new-state = nil
 		do (setf new-state (apply-operator op state))
+		do (setf *expanded-nodes* (+ *expanded-nodes* 1))
 		when (and (valid-operator op state) (valid-state? new-state))
 			collect (list new-state op) into childs
 		finally (return childs)))
@@ -197,7 +206,13 @@
 		else
 			do (format t "\(~2A\)  aplicando ~20A se llega a ~A~%"  i (fourth  node)  (second  node)) ))
 
-
+(defun display-stats ()
+	"Despliega las estadisticas de la solución"
+	(format t "Nodos creados: ~A~%" *id* )
+	(format t "Nodos expandidos: ~A~%" *expanded-nodes*)
+	(format t "Longitud máxima de la Frontera de búsqueda: ~A~%" *max-length-open*)
+	(format t "Longitud de la solución: ~A operadores~%" (- (length *solution*) 1))
+	(format t "Tiempo para encontrar la solución: ~D segundos~%" (- (get-internal-real-time) *start-time*)) )
 ;;=======================================================================
 ;;  RESET-ALL  y  BLIND-SEARCH
 ;;
@@ -214,13 +229,15 @@
      (setq  *memory*  nil)
      (setq  *id*  0)
      (setq  *current-ancestor*  nil)
-     (setq  *solution*  nil))
+     (setq  *solution*  nil)
+     (setf *start-time* 0))
 
 (defun  blind-search (initial-state goal-state method)
 	"Realiza una búsqueda ciega, por el método especificado y desde un estado inicial hasta un estado meta
 	    los métodos posibles son: :depth-first - búsqueda en profundidad
 	                              :breath-first - búsqueda en anchura"
     (reset-all)
+    (setf *start-time* (get-internal-real-time))
     (let ( (node nil)
     		(state nil)
     		(childs '())
@@ -235,6 +252,7 @@
 				(cond ((equal goal-state state) 
 						(format t "Éxito. Meta encontrada en ~A intentos~%" (first node))
 						(display-solution (extract-solution node))
+						(display-stats)
 						(setf goal-found T))
 					(T (setf *current-ancestor* (first node))
 						(setf childs (expand state))
